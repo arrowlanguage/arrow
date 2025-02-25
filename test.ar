@@ -1,0 +1,24 @@
+[
+  "hello world" > variable,
+  variable > @print,
+
+  [
+    "trigger" > var,
+
+    "trigger" => var > @loop,
+              => "loop" > @print,
+
+    "stop"    => "stop" > var,
+
+  ] > loop,
+
+  "trigger" > @loop;
+  > @program,
+
+  [
+    any => "hello" > any,
+  ] > function,
+
+  variable > @function;
+] > main
+> @main

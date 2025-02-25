@@ -1,0 +1,32 @@
+<program>             ::= { <command> ";" }
+
+<command>             ::= <basic_command>
+                        | <match_case>
+
+<basic_command>       ::= [ <data> ] ">" <data>
+
+<match_case>          ::= [ <data> ] "=>" <basic_command>
+
+<data>                ::= <literal>
+                        | <name>
+                        | "any" #The reserved word any acts as a placeholder in match commands
+   
+<literal>             ::= <string_literal>
+                        | <multiline_literal>
+   
+<string_literal>      ::= "\"" <contents> "\""
+<multiline_literal>   ::= "{" <contents> "}" #Multiline literals may span multiple lines and allow nested braces
+
+
+<contents>            ::= { <character> }
+<character>           ::= any character except the delimiting symbol
+   
+<name>                ::= [ "@" ] <identifier>
+<identifier>          ::= <letter> { <letter> | <digit> }
+<letter>              ::= "A" | "B" | "C" | ... | "Z"
+                        | "a" | "b" | "c" | ... | "z"
+                        | "_"
+<digit>               ::= "0" | "1" | "2" | "3" | "4"
+                        | "5" | "6" | "7" | "8" | "9"
+
+              

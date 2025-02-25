@@ -9,33 +9,14 @@ def tokenize(code):
         if token != ""
     ]
 
+# Operations needs to be defined before eval uses it
+operations = {
+    "+": lambda x, y: x + y,
+    "-": lambda x, y: x - y,
+    "*": lambda x, y: x * y,
+    "==": lambda x, y: x == y,
+}
 
-codex = r"""
-[
-"hello world" > variable,
-variable > @print,
-
-loop < [
-    "trigger" > var,
-
-    "trigger" => var > @loop,
-            => "loop" > @print,
-
-    "stop"    => "stop" > var,
-
-],
-
-"trigger" > @loop,
-> @program,
-
-function < [
-    any => "hello" > any,
-],
-
-variable > @function,
-] > main,
-> @main,
-"""
 
 def leaf(token):
     try:
@@ -63,130 +44,189 @@ def build_ast(tokens):
 
 def parse(code):
     code = "["+code+"]"
-    #print(build_ast(tokenize(code)))
+    # print(build_ast(tokenize(code)))
     return build_ast(tokenize(code))
 
+
+def eval_command(ast, index, env):
+    """Evaluate a single command starting at index and return (result, new_index)"""
+    result = None
+
+    # Extract command parts
+    src = None
+    op = None
+    target = None
+
+    # Skip commas - MOVE THIS TO TOP PRIORITY
+    if index < len(ast) and ast[index] == ",":
+        print(
+            f"Debug: Command separator ',' found - moving to next command"
+        )  # Better debug
+        return None, index + 1
+
+    # "data > target" pattern
+    elif index + 2 < len(ast) and ast[index + 1] == ">":
+        src = ast[index]
+        op = ast[index + 1]  # ">"
+        target = ast[index + 2]
+
+        # You can set a breakpoint here to inspect src, op, target
+        print(f"Debug: {src} {op} {target}")  # Add breakpoint here
+
+        # Special handling for list assignments (actor definitions)
+        if isinstance(src, list):
+            # Don't evaluate lists - they are code blocks for actors
+            data = src
+            env[target] = data
+            print(f"Created actor '{target}' with code block")  # Debug log
+        else:
+            # For non-lists, evaluate as before
+            data = eval(src, env)
+
+            if isinstance(target, str) and target.startswith("@"):
+                # Function call with @ prefix
+                func_name = target[1:]
+                if func_name == "print":
+                    print(data)
+                    print(f"Actor @print called with data: {data}")  # Debug log
+                elif func_name in env:
+                    print(f"Actor @{func_name} called with data: {data}")  # Debug log
+                    result = env[func_name](data)
+                else:
+                    raise Exception(f"Unknown function: {func_name}")
+            else:
+                # Assignment
+                env[target] = data
+                print(f"Assigned value '{data}' to '{target}'")  # Debug log
+
+        return result, index + 3
+
+    # "> target" pattern
+    elif index + 1 < len(ast) and ast[index] == ">":
+        op = ast[index]  # ">"
+        target = ast[index + 1]
+        src = None
+
+        # You can set a breakpoint here to inspect op, target
+        print(f"Debug: {op} {target}")  # Add breakpoint here
+
+        if isinstance(target, str) and target.startswith("@"):
+            func_name = target[1:]
+            if func_name == "program":
+                # Special handling for program execution
+                print(f"Starting program execution")  # Debug log
+            elif func_name in env:
+                print(f"Executing actor @{func_name} with no arguments")  # Debug log
+                # Check if the actor is callable or a code block
+                if callable(env[func_name]):
+                    result = env[func_name]()
+                elif isinstance(env[func_name], list):
+                    # Execute the actor's code block in the current environment
+                    result = eval(env[func_name], env)
+                else:
+                    print(
+                        f"Warning: Actor {func_name} is neither callable nor a code block"
+                    )
+            else:
+                raise Exception(f"Unknown function: {func_name}")
+
+        return result, index + 2
+
+    # "data => match > target" pattern
+    elif index + 4 < len(ast) and ast[index + 1] == "=>" and ast[index + 3] == ">":
+        src = ast[index]
+        pattern_op = ast[index + 1]  # "=>"
+        match = ast[index + 2]
+        target_op = ast[index + 3]  # ">"
+        target = ast[index + 4]
+
+        # You can set a breakpoint here
+        print(
+            f"Debug: {src} {pattern_op} {match} {target_op} {target}"
+        )  # Add breakpoint here
+
+        pattern = eval(src, env)
+
+        # Simple pattern matching
+        if pattern == match or pattern == "any":
+            if isinstance(target, str) and target.startswith("@"):
+                # Function call
+                func_name = target[1:]
+                if func_name in env:
+                    result = env[func_name](match)
+            else:
+                env[target] = match
+
+        return result, index + 5
+
+    # Handle nested lists or other elements
+    else:
+        src = ast[index]
+        op = "eval"  # Not a real operator, just for debugging
+        target = None
+
+        # You can set a breakpoint here
+        if isinstance(src, list):
+            print(f"Debug: evaluating nested list")  # Add breakpoint here
+            result = eval(src, env)
+
+        return result, index + 1
+
+
 def eval(ast, env={}):
-    #region lisp stuff
-    # region number true false
+    # Handle primitives and lookups
     if type(ast) == int:
         return ast
     elif ast == "true":
         return True
     elif ast == "false":
         return False
-    # endregion
-
-    # + - * == implementations
     elif type(ast) == str and ast in operations:
         return operations[ast]
-
-    # not sure what this does
     elif type(ast) == str:
-        return env[ast]
+        if ast in env:
+            return env[ast]
+        return ast  # Return literal strings that aren't in env
 
-    #endregion 
-    
     assert type(ast) == list
 
-    # print(ast)
-    data = None
-    operator = None
-    target = None
-    for x in range(len(ast)):
-        element = ast[x]
+    if not ast:  # Empty list
+        return None
 
-        if element == type(list):
-            data = element
+    # Process commands in the list
+    result = None
+    i = 0
+    while i < len(ast):
+        result, i = eval_command(ast, i, env)
 
-        if element == ">":  # > .
+    return result
 
-            operator = ">"
-            target = ast[x+1]
-            break
 
-        elif ast[x+1] == ">":  # . > .
-            print("detect")
-            data = element
-            operator = ">"
-            target = ast[x+2]
-            print(target)
-            break
+codex = r"""
+[
+    "hello world" > variable,
+    variable > @print,
 
-        if element == ",":
-            print("return")
-            # break
+    [
+        "trigger" > var,
 
-    if operator == ">":
-        if data is not None: # data > target
-            if not target[0] == "@":
-                target = data
-                pass
-            elif target[0] == "@":
-                target(data)
-        else: # > target
-            if target[0] == "@":
-                target()
-            else:
-                raise
-    elif operator == "=>":
-        if data is not None: #data => target
-            pass
-        else: # => target
-            pass
+        "trigger" => var > @loop,
+                => "loop" > @print,
 
-    #region lisp stuff
-    if op == "let":
-        [x, definition, expression] = args
-        new_env = env.copy()
-        new_env[x] = eval(definition, new_env)
-        return eval(expression, new_env)
+        "stop"    => "stop" > var,
 
-    elif op == "if":
-        assert len(ast) == 4
-        [cond, if_true, if_false] = args
-        return eval(if_true, env) if eval(cond, env) else eval(if_false, env)
+    ] > loop,
 
-    # Functions!
-    elif op == "lmb":
-        assert type(ast[1]) == str
-        *variables, expression = args
+    "trigger" > @loop,
+    > @program,
 
-        def lmb(*args):
-            assert len(args) == len(variables)
-            return eval(
-                expression, {**env, **{variables[i]: args[i] for i in range(len(args))}}
-            )
+    [
+        any => "hello" > any,
+    ] > function,
 
-        return lmb
-
-    # Function calls! - pass by value
-    else:
-
-        return eval(op, env)(*[eval(expr, env) for expr in ast[1:]])
-
-    #endregion
+    variable > @function,
+] > main,
+> @main,
+"""
 
 print(eval(parse(codex)))
-
-
-operations = {
-    "+": lambda x, y: x + y,
-    "-": lambda x, y: x - y,
-    "*": lambda x, y: x * y,
-    "==": lambda x, y: x == y,
-}
-
-
-print(eval(parse(
-"""
-(
-    let factorial (lmb x
-        (if (== x 1) 1
-            (* x (factorial (- x 1)))
-        )
-    ) 
-    (factorial 10)
-)
-"""
-)))

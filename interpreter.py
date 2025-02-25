@@ -53,47 +53,44 @@ def eval_command(ast, index, env):
     result = None
 
     # Extract command parts
-    src = None
+    key = None
     op = None
     target = None
 
+    # Add a field to track the current pattern being built
+    if "_current_pattern" not in env:
+        env["_current_pattern"] = None
+
     # Skip commas - MOVE THIS TO TOP PRIORITY
     if index < len(ast) and ast[index] == ",":
-        print(
-            f"Debug: Command separator ',' found - moving to next command"
-        )  # Better debug
+        # print(f"Debug: Command separator ',' found - moving to next command")
         return None, index + 1
 
     # "data > target" pattern
     elif index + 2 < len(ast) and ast[index + 1] == ">":
-        src = ast[index]
+        key = ast[index]
         op = ast[index + 1]  # ">"
         target = ast[index + 2]
 
         # You can set a breakpoint here to inspect src, op, target
-        print(f"Debug: {src} {op} {target}")  # Add breakpoint here
+        print(f"Debug: {key} {op} {target}")  # Add breakpoint here
 
         # Special handling for list assignments (actor definitions)
-        if isinstance(src, list):
+        if isinstance(key, list):
             # Don't evaluate lists - they are code blocks for actors
-            data = src
+            data = key
             env[target] = data
             print(f"Created actor '{target}' with code block")  # Debug log
         else:
             # For non-lists, evaluate as before
-            data = eval(src, env)
+            data = eval(key, env)
 
+            # In the "data > target" pattern when calling a function with @ prefix
             if isinstance(target, str) and target.startswith("@"):
                 # Function call with @ prefix
                 func_name = target[1:]
-                if func_name == "print":
-                    print(data)
-                    print(f"Actor @print called with data: {data}")  # Debug log
-                elif func_name in env:
-                    print(f"Actor @{func_name} called with data: {data}")  # Debug log
-                    result = env[func_name](data)
-                else:
-                    raise Exception(f"Unknown function: {func_name}")
+                result = call_actor(func_name, data, env)
+                return result, index + 3
             else:
                 # Assignment
                 env[target] = data
@@ -105,7 +102,7 @@ def eval_command(ast, index, env):
     elif index + 1 < len(ast) and ast[index] == ">":
         op = ast[index]  # ">"
         target = ast[index + 1]
-        src = None
+        key = None
 
         # You can set a breakpoint here to inspect op, target
         print(f"Debug: {op} {target}")  # Add breakpoint here
@@ -132,45 +129,157 @@ def eval_command(ast, index, env):
 
         return result, index + 2
 
-    # "data => match > target" pattern
+    # "key => command" pattern
     elif index + 4 < len(ast) and ast[index + 1] == "=>" and ast[index + 3] == ">":
-        src = ast[index]
+        key = ast[index]
         pattern_op = ast[index + 1]  # "=>"
-        match = ast[index + 2]
+        src = ast[index + 2]
         target_op = ast[index + 3]  # ">"
         target = ast[index + 4]
 
         # You can set a breakpoint here
         print(
-            f"Debug: {src} {pattern_op} {match} {target_op} {target}"
+            f"Debug match: key:{key} op:{pattern_op} command:{src} {target_op} {target}"
         )  # Add breakpoint here
 
-        pattern = eval(src, env)
+        # Store the pattern without immediate evaluation
+        if "_pending_patterns" not in env:
+            env["_pending_patterns"] = {}
 
-        # Simple pattern matching
-        if pattern == match or pattern == "any":
-            if isinstance(target, str) and target.startswith("@"):
-                # Function call
-                func_name = target[1:]
-                if func_name in env:
-                    result = env[func_name](match)
-            else:
-                env[target] = match
+        if key not in env["_pending_patterns"]:
+            env["_pending_patterns"][key] = []
+
+        # Track this as the current pattern being built
+        env["_current_pattern"] = key
+
+        # Add this command to the pattern's action list
+        command = {"data": src, "target": target}
+        env["_pending_patterns"][key].append(command)
 
         return result, index + 5
 
+    # "=> command" overload pattern
+    elif index + 3 < len(ast) and ast[index] == "=>" and ast[index + 2] == ">":
+        key = None
+        pattern_op = ast[index]  # "=>"
+        src = ast[index + 1]
+        target_op = ast[index + 2]  # ">"
+        target = ast[index + 3]
+
+        # Get the most recently defined pattern using _current_pattern
+        if "_current_pattern" in env and env["_current_pattern"] is not None:
+            current_pattern = env["_current_pattern"]
+            print(
+                f"Debug match overload: key:{current_pattern} op:{pattern_op} command:{src} {target_op} {target}"
+            )  # Add breakpoint here
+
+            # Add this command to the pattern's action list
+            command = {"data": src, "target": target}
+            env["_pending_patterns"][current_pattern].append(command)
+        else:
+            print("Warning: Overload pattern found but no previous pattern exists")
+
+        return None, index + 4
+
     # Handle nested lists or other elements
     else:
-        src = ast[index]
+        key = ast[index]
         op = "eval"  # Not a real operator, just for debugging
         target = None
 
         # You can set a breakpoint here
-        if isinstance(src, list):
+        if isinstance(key, list):
             print(f"Debug: evaluating nested list")  # Add breakpoint here
-            result = eval(src, env)
+            result = eval(key, env)
 
         return result, index + 1
+
+
+def call_actor(actor_name, data, env, call_stack=None):
+    """Helper function to call actors recursively in a consistent way"""
+    # Initialize call stack to prevent infinite recursion
+    if call_stack is None:
+        call_stack = []
+
+    # Check for recursive loops
+    call_signature = (actor_name, str(data))
+    if call_signature in call_stack:
+        print(f"Warning: Detected recursive call to @{actor_name} with {data}")
+        return None
+
+    # Add current call to stack
+    call_stack.append(call_signature)
+
+    print(f"Calling actor @{actor_name} with data: {data}")
+
+    if actor_name == "print":
+        print(data)
+        print(f"Actor @print called with data: {data}")
+        return data
+
+    if actor_name not in env:
+        print(f"Warning: Actor {actor_name} not found")
+        return None
+
+    # Create a copy of the environment for this actor execution
+    actor_env = env.copy()
+    actor_env["it"] = data  # Make the input data available as "it"
+    actor_env["self"] = env[actor_name]  # Provide self-reference
+
+    if isinstance(env[actor_name], list):
+        # Run the actor code first to register all patterns
+        eval(env[actor_name], actor_env)
+
+        # Check for pattern matches
+        matched = False
+        if "_pending_patterns" in actor_env:
+            # Make a copy of the patterns to avoid modification during iteration
+            pattern_items = list(actor_env["_pending_patterns"].items())
+
+            for pattern_key, commands in pattern_items:
+                pattern_value = eval(pattern_key, actor_env)
+                if pattern_value == data:
+                    print(f"Pattern match found: {pattern_key} = {data}")
+                    matched = True
+
+                    # Make a copy of commands to avoid modification issues
+                    commands_to_execute = commands.copy()
+                    print(
+                        f"Executing {len(commands_to_execute)} commands for pattern {pattern_key}"
+                    )
+
+                    # Execute all commands associated with this pattern
+                    for cmd in commands_to_execute:
+                        data_expr = cmd["data"]
+                        target_expr = cmd["target"]
+
+                        data_value = eval(data_expr, actor_env)
+
+                        if isinstance(target_expr, str) and target_expr.startswith("@"):
+                            # Recursively call another actor
+                            target_actor = target_expr[1:]
+                            call_actor(target_actor, data_value, actor_env, call_stack)
+                        else:
+                            # Assign to variable
+                            actor_env[target_expr] = data_value
+                            print(f"Assigned value '{data_value}' to '{target_expr}'")
+
+        # Copy any changes from actor_env back to env
+        for k, v in actor_env.items():
+            if k != "it" and k != "self":
+                env[k] = v
+
+        # Remove this call from stack before returning
+        call_stack.pop()
+        return matched
+    elif callable(env[actor_name]):
+        result = env[actor_name](data)
+        call_stack.pop()
+        return result
+    else:
+        print(f"Warning: Actor {actor_name} is neither callable nor a code block")
+        call_stack.pop()
+        return None
 
 
 def eval(ast, env={}):
@@ -208,23 +317,16 @@ codex = r"""
     variable > @print,
 
     [
-        "trigger" > var,
+        "stop" > var,
 
-        "trigger" => var > @loop,
-                => "loop" > @print,
+        "trigger" => "loop" > @print,
+                  => var > @loop,
 
         "stop"    => "stop" > var,
 
     ] > loop,
 
     "trigger" > @loop,
-    > @program,
-
-    [
-        any => "hello" > any,
-    ] > function,
-
-    variable > @function,
 ] > main,
 > @main,
 """

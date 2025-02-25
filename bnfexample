@@ -1,4 +1,4 @@
-<program>             ::= { <command> ";" }
+<program>             ::= { <command> "," }
 
 <command>             ::= <basic_command>
                         | <match_case>
@@ -15,7 +15,7 @@
                         | <multiline_literal>
    
 <string_literal>      ::= "\"" <contents> "\""
-<multiline_literal>   ::= "{" <contents> "}" #Multiline literals may span multiple lines and allow nested braces
+<multiline_literal>   ::= "[" <contents> "]" #Multiline literals may span multiple lines and allow nested braces
 
 
 <contents>            ::= { <character> }

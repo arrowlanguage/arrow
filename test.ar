@@ -1,12 +1,15 @@
-"none" > var,
+"">data
+"aaaa">number
 [
-  "stop" => [["stop matched" > @print]],
-  "play" => [
-    ["log" > @print],
-    ["play" > @myActor]
-  ],
-  "test" > @print
-] > myActor,
+  "step" => [
+    ["always" > @print]
+    [[data "a"] > data]
+    [data > @count]
+  ]
+  [number] => [
+    ["done"> @print]
+  ]
+  "step" > @count
+] > count
 
-"stop" > someVar, 
-someVar > @myActor,
+"step" > @count

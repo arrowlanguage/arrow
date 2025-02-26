@@ -7,6 +7,9 @@ def tokenize(code):
         c = code[i]
         if c.isspace():
             i += 1
+        elif c == '#':  # Skip comments
+            while i < len(code) and code[i] != '\n':
+                i += 1
         elif c == '"':  # quoted string
             i += 1
             start = i
@@ -88,26 +91,31 @@ def group_statements(ast):
     """
     if isinstance(ast, list):
         # If the list already looks like a statement ([lhs, op, rhs]), process its parts.
-        if len(ast) == 3 and ast[1] in {">", "=>"}:
-            return [group_statements(ast[0]), ast[1], group_statements(ast[2])]
-        # Otherwise, if the length is a multiple of 3, assume it's a flat list of statements.
-        if len(ast) % 3 == 0:
-            grouped = []
-            for i in range(0, len(ast), 3):
-                # Only group if the middle element is an operator.
-                if ast[i + 1] in {">", "=>"}:
-                    grouped.append(
-                        [
-                            group_statements(ast[i]),
-                            ast[i + 1],
-                            group_statements(ast[i + 2]),
-                        ]
-                    )
-                else:
-                    grouped.append(group_statements(ast[i]))
-            return grouped
-        # Otherwise, process each element.
-        return [group_statements(x) for x in ast]
+        try:
+            if len(ast) == 3 and ast[1] in {">"}:
+                return [group_statements(ast[0]), ast[1], group_statements(ast[2])]
+            if len(ast) == 3 and ast[1] in {"=>"}:
+                return [[group_statements(ast[0]), ast[1], group_statements(ast[2])]]
+            # Otherwise, if the length is a multiple of 3, assume it's a flat list of statements.
+            if len(ast) % 3 == 0:
+                grouped = []
+                for i in range(0, len(ast), 3):
+                    # Only group if the middle element is an operator.
+                    if ast[i + 1] in {">", "=>"}:
+                        grouped.append(
+                            [
+                                group_statements(ast[i]),
+                                ast[i + 1],
+                                group_statements(ast[i + 2]),
+                            ]
+                        )
+                    else:
+                        grouped.append(group_statements(ast[i]))
+                return grouped
+            # Otherwise, process each element.
+            return [group_statements(x) for x in ast]
+        except:
+            return [group_statements(x) for x in ast]
     return ast
 
 code = r"""

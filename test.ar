@@ -1,18 +1,11 @@
-[
-  "hello world" > variable,
-  variable > @print,
+"stop" > "someVar", 
 
   [
-      "trigger" > var,
-
-      "trigger" => var > @loop,
-                => "loop" > @print,
-
-      "stop"    => "stop" > var,
-
-  ] > loop,
-
-  "trigger" > @loop,
-
-] > main,
-> @main,
+    "stop" => [["stop matched" > @print]],
+    "play" => [
+      ["log" > @print],
+      ["play" > @myActor]
+    ],
+  ] > myActor,
+  
+"someVar" > @myActor,

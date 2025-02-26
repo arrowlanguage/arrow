@@ -5,7 +5,7 @@
 
 <basic_command>       ::= [ <data> ] ">" <data>
 
-<match_case>          ::= [ <data> ] "=>" <basic_command>
+<match_case>          ::= <data> "=>" <basic_command>
 
 <data>                ::= <literal>
                         | <name>

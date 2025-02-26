@@ -10,7 +10,8 @@
     "build": true,
     "dist": true,
     "antlr": true,
-    "__pycache__": true
+    "__pycache__": true,
+    "**/__pycache__": true
   },
   "explorerExclude.backup": {},
 }

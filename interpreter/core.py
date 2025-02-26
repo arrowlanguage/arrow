@@ -60,13 +60,11 @@ def step(state):
     state[1], state[3] = rest, env
     return state, True
 
-
 def rewrite(state):
     while True:
         state, changed = step(state)
         if not changed:
             return state
-
 
 def store_actor_pattern(env, actor, patres):
     key = tuple(actor)
@@ -74,7 +72,6 @@ def store_actor_pattern(env, actor, patres):
         env[key] = ["matchcases", [patres], []]
     else:
         env[key][1].append(patres)
-
 
 def store_actor_command(env, actor, command):
     key = tuple(actor)
@@ -85,13 +82,11 @@ def store_actor_command(env, actor, command):
             env[key].append([])
         env[key][2].append(command)
 
-
 def lookup_actor_patterns(env, actor):
     node = env.get(tuple(actor))
     if node and node[0] == "matchcases":
         return node[1]
     return None
-
 
 def lookup_actor_commands(env, actor):
     node = env.get(tuple(actor))

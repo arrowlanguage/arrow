@@ -1,11 +1,12 @@
-"stop" > "someVar", 
+"none" > var,
+[
+  "stop" => [["stop matched" > @print]],
+  "play" => [
+    ["log" > @print],
+    ["play" > @myActor]
+  ],
+  "test" > @print
+] > myActor,
 
-  [
-    "stop" => [["stop matched" > @print]],
-    "play" => [
-      ["log" > @print],
-      ["play" > @myActor]
-    ],
-  ] > myActor,
-  
-"someVar" > @myActor,
+"stop" > someVar, 
+someVar > @myActor,
